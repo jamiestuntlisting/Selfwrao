@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#111418" />
+<title>Exhibit G Time Logger</title>
+<style>
+  :root {
+    --bg: #111418;
+    --card: #1c2128;
+    --card-edge: #2a313a;
+    --text: #f5f7fa;
+    --muted: #8b97a7;
+    --accent-g: #f2b400;
+    --accent-lunch: #4c9aff;
+    --accent-wrap: #ff5b6e;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    padding: calc(var(--safe-top) + 14px) 16px calc(var(--safe-bottom) + 14px);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  header {
+    flex: 0 0 auto;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.05rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  header .date {
+    margin-top: 2px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    opacity: 0.8;
+  }
+
+  main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .slot {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+    border: 1px solid var(--card-edge);
+    background: var(--card);
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+  }
+  .slot[data-key="g"]     { --accent: var(--accent-g); }
+  .slot[data-key="lunch"] { --accent: var(--accent-lunch); }
+  .slot[data-key="wrap"]  { --accent: var(--accent-wrap); }
+
+  .slot .label {
+    flex: 0 0 auto;
+    padding: 10px 16px 0;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Unrecorded: big tappable button fills the slot */
+  .record-btn {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: clamp(1.4rem, 6vw, 2.1rem);
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.12s ease;
+  }
+  .record-btn:active { background: rgba(255,255,255,0.05); }
+  .record-btn .tap-hint {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .record-btn .plus {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    line-height: 1;
+  }
+
+  /* Recorded: tap the time to manage it */
+  .time-view {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    width: 100%;
+    padding: 4px 12px;
+    text-align: center;
+  }
+  .time-view:active { background: rgba(255,255,255,0.04); }
+  .time-view .time {
+    font-size: clamp(2rem, 11vw, 3.4rem);
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .time-view .note {
+    font-size: 0.9rem;
+    color: var(--muted);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: italic;
+  }
+  .time-view .edit-hint {
+    font-size: 0.72rem;
+    color: var(--muted);
+    opacity: 0.65;
+    letter-spacing: 0.05em;
+  }
+
+  /* Inline action sheet inside the slot (keeps page from scrolling) */
+  .sheet {
+    position: absolute;
+    inset: 0;
+    background: rgba(17,20,24,0.94);
+    backdrop-filter: blur(2px);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px;
+    gap: 10px;
+    z-index: 5;
+  }
+  .sheet[hidden] { display: none; }
+  .sheet .sheet-time {
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-align: center;
+  }
+  .sheet textarea {
+    flex: 1 1 auto;
+    resize: none;
+    border-radius: 12px;
+    border: 1px solid var(--card-edge);
+    background: #0d1014;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    min-height: 0;
+  }
+  .sheet textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .sheet-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+  }
+  .sheet-actions button {
+    flex: 1 1 0;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 8px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-done   { background: var(--accent); color: #111418; }
+  .btn-undo   { background: #2a313a; color: var(--accent-wrap); }
+  .btn-close  { background: #2a313a; color: var(--text); }
+  .sheet-actions button:active { filter: brightness(0.9); }
+
+  footer {
+    flex: 0 0 auto;
+    text-align: center;
+    margin-top: 10px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Exhibit G &middot; Time Logger</h1>
+    <div class="date" id="dateLabel"></div>
+  </header>
+
+  <main id="main"><!-- slots injected by JS --></main>
+
+  <footer>Tap a time to add a note or undo &middot; Times save automatically</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var SLOTS = [
+    { key: "g",     label: "Exhibit G" },
+    { key: "lunch", label: "Lunch" },
+    { key: "wrap",  label: "Wrap" }
+  ];
+
+  // ---- Persistence (per calendar day) ----------------------------------
+  var DATE_KEY = isoDate(new Date());        // e.g. 2026-06-01
+  var STORE_KEY = "exhibitG.timelog." + DATE_KEY;
+
+  function isoDate(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+
+  function load() {
+    try {
+      return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function save(data) {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    } catch (e) {
+      /* storage unavailable (e.g. private mode) — app still works in-session */
+    }
+  }
+
+  var state = load(); // { g: {ts, note}, lunch: {...}, wrap: {...} }
+
+  // ---- Time formatting --------------------------------------------------
+  function formatTime(ts) {
+    var d = new Date(ts);
+    var h = d.getHours();
+    var m = String(d.getMinutes()).padStart(2, "0");
+    var ampm = h >= 12 ? "PM" : "AM";
+    var h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    return h12 + ":" + m + " " + ampm;
+  }
+
+  // ---- Rendering --------------------------------------------------------
+  var main = document.getElementById("main");
+
+  function render() {
+    main.innerHTML = "";
+    SLOTS.forEach(function (slot) {
+      main.appendChild(buildSlot(slot));
+    });
+  }
+
+  function buildSlot(slot) {
+    var entry = state[slot.key];
+
+    var el = document.createElement("section");
+    el.className = "slot";
+    el.setAttribute("data-key", slot.key);
+
+    var label = document.createElement("div");
+    label.className = "label";
+    label.textContent = slot.label;
+    el.appendChild(label);
+
+    if (!entry) {
+      el.appendChild(buildRecordButton(slot));
+    } else {
+      el.appendChild(buildTimeView(slot, entry));
+    }
+    return el;
+  }
+
+  function buildRecordButton(slot) {
+    var btn = document.createElement("button");
+    btn.className = "record-btn";
+    btn.type = "button";
+    btn.innerHTML =
+      '<span class="plus">+</span>' +
+      '<span>Tap to log <span class="tap-hint">' + slot.label + "</span></span>";
+    btn.addEventListener("click", function () {
+      state[slot.key] = { ts: Date.now(), note: "" };
+      save(state);
+      render();
+    });
+    return btn;
+  }
+
+  function buildTimeView(slot, entry) {
+    var view = document.createElement("div");
+    view.className = "time-view";
+
+    var time = document.createElement("div");
+    time.className = "time";
+    time.textContent = formatTime(entry.ts);
+    view.appendChild(time);
+
+    if (entry.note) {
+      var note = document.createElement("div");
+      note.className = "note";
+      note.textContent = "“" + entry.note + "”";
+      view.appendChild(note);
+    }
+
+    var hint = document.createElement("div");
+    hint.className = "edit-hint";
+    hint.textContent = "TAP TO EDIT / UNDO";
+    view.appendChild(hint);
+
+    view.addEventListener("click", function () {
+      openSheet(slot, entry);
+    });
+    return view;
+  }
+
+  // ---- Inline action sheet (no page scroll) -----------------------------
+  function openSheet(slot, entry) {
+    var slotEl = main.querySelector('.slot[data-key="' + slot.key + '"]');
+    if (!slotEl || slotEl.querySelector(".sheet")) return;
+
+    var sheet = document.createElement("div");
+    sheet.className = "sheet";
+
+    var when = document.createElement("div");
+    when.className = "sheet-time";
+    when.textContent = slot.label + " logged at " + formatTime(entry.ts);
+    sheet.appendChild(when);
+
+    var ta = document.createElement("textarea");
+    ta.placeholder = "Add a note (optional)…";
+    ta.value = entry.note || "";
+    sheet.appendChild(ta);
+
+    var actions = document.createElement("div");
+    actions.className = "sheet-actions";
+
+    var undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn-undo";
+    undo.textContent = "Undo time";
+    undo.addEventListener("click", function () {
+      delete state[slot.key];
+      save(state);
+      render();
+    });
+
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "btn-close";
+    close.textContent = "Cancel";
+    close.addEventListener("click", function () {
+      render();
+    });
+
+    var done = document.createElement("button");
+    done.type = "button";
+    done.className = "btn-done";
+    done.textContent = "Save note";
+    done.addEventListener("click", function () {
+      state[slot.key].note = ta.value.trim();
+      save(state);
+      render();
+    });
+
+    actions.appendChild(undo);
+    actions.appendChild(close);
+    actions.appendChild(done);
+    sheet.appendChild(actions);
+
+    slotEl.appendChild(sheet);
+    ta.focus();
+  }
+
+  // ---- Init -------------------------------------------------------------
+  document.getElementById("dateLabel").textContent =
+    new Date().toLocaleDateString(undefined, {
+      weekday: "long", month: "long", day: "numeric", year: "numeric"
+    });
+
+  render();
+})();
+</script>
+</body>
+</html>
