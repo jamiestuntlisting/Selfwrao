@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#111418" />
+<title>Rate Calculator (Demo) · StuntListing</title>
+<style>
+  :root {
+    --bg: #111418;
+    --card: #1c2128;
+    --edge: #2a313a;
+    --text: #f5f7fa;
+    --muted: #8b97a7;
+    --accent: #f2b400;
+    --green: #5fd08a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 0);
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 18px 0 40px; }
+
+  .demo-banner {
+    background: #3a2e00;
+    border: 1px solid #6b5400;
+    color: #ffd24d;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 0.82rem; margin-bottom: 18px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 0; border-bottom: 1px solid var(--edge); font-size: 0.95rem; }
+  tr:last-child td { border-bottom: none; }
+  td.r { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  td.lbl .s { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+  .empty { color: var(--muted); font-weight: 400; }
+
+  .rate-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .rate-row label { font-size: 0.9rem; color: var(--muted); flex: 1; }
+  .rate-row input {
+    width: 120px;
+    background: #0d1014;
+    color: var(--text);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    text-align: right;
+  }
+  .rate-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 6px;
+  }
+  .total .lbl { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .total .val { font-size: 1.9rem; font-weight: 800; color: var(--green); font-variant-numeric: tabular-nums; }
+
+  .back {
+    display: inline-block;
+    margin-top: 8px;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+  .none { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+  .foot { color: var(--muted); opacity: 0.7; font-size: 0.7rem; margin-top: 18px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo-banner">⚠ DEMO / TEMP — placeholder rate math, not official</div>
+  <h1>Rate Calculator</h1>
+  <div class="sub" id="sub">StuntListing · receives times from the Exhibit&nbsp;G logger</div>
+
+  <div id="content"></div>
+
+  <a class="back" href="index.html">← Back to Time Logger</a>
+
+  <div class="foot">
+    This is a temporary stand-in for the real StuntListing rate calculator.
+    It reads the day's key times handed off from the Exhibit&nbsp;G logger
+    (via URL hash or local storage) and shows a sample day-rate computation.
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var HANDOFF_KEY = "stuntlisting.rateCalc.handoff";
+
+  function readHandoff() {
+    var m = (location.hash || "").match(/handoff=([^&]+)/);
+    if (m) { try { return JSON.parse(decodeURIComponent(m[1])); } catch (e) {} }
+    try { return JSON.parse(localStorage.getItem(HANDOFF_KEY)); } catch (e) {}
+    return null;
+  }
+
+  var DEFAULT_RATE = 35;        // demo hourly base rate ($)
+  var OT_AFTER = 8;             // hours before overtime
+  var OT_MULT = 1.5;
+
+  var data = readHandoff();
+  var content = document.getElementById("content");
+  var sub = document.getElementById("sub");
+
+  if (!data || !data.times) {
+    content.innerHTML =
+      '<div class="card"><p class="none">No times received yet.<br>' +
+      'Open the <a class="back" href="index.html" style="margin:0">Time Logger</a>, ' +
+      'log your NDB / Lunch / Wrap, then tap <b>Send to Rate Calc</b>.</p></div>';
+    return;
+  }
+
+  var t = data.times;
+  if (data.date) {
+    var d = new Date(data.date + "T00:00:00");
+    sub.textContent = "Day: " + d.toLocaleDateString(undefined,
+      { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  }
+
+  // ---- Received times table (Lunch shows in + inferred out) ----
+  function row(label, sublabel, value, empty) {
+    return "<tr><td class='lbl'>" + label +
+      (sublabel ? "<span class='s'>" + sublabel + "</span>" : "") +
+      "</td><td class='r" + (empty ? " empty" : "") + "'>" + value + "</td></tr>";
+  }
+  var rows = "";
+  rows += row("NDB", "Non-Deductible Breakfast", t.ndb ? t.ndb.clock : "—", !t.ndb);
+  if (t.lunch) {
+    var outClock = t.lunch.outInferred ? t.lunch.outInferred.clock : "—";
+    rows += row("Lunch — In", "1st meal", t.lunch.clock, false);
+    rows += row("Lunch — Out", "inferred (+" +
+      (t.lunch.outInferred ? t.lunch.outInferred.minutesAfterIn : 30) + " min)", outClock, false);
+  } else {
+    rows += row("Lunch", "1st meal", "—", true);
+  }
+  rows += row("Wrap", "Dismiss on set", t.wrap ? t.wrap.clock : "—", !t.wrap);
+
+  // ---- Demo calculation ----
+  // Worked span = NDB (or first available) -> Wrap, minus the 30-min meal.
+  var startIso = (t.ndb && t.ndb.iso) || (t.lunch && t.lunch.iso) || null;
+  var endIso = t.wrap && t.wrap.iso;
+  var mealMin = (t.lunch && t.lunch.outInferred) ? t.lunch.outInferred.minutesAfterIn : 30;
+
+  var calcCard = "";
+  if (startIso && endIso) {
+    var ms = new Date(endIso) - new Date(startIso);
+    var workedHrs = Math.max(0, ms / 3600000 - mealMin / 60);
+
+    function money(n) { return "$" + n.toFixed(2); }
+    function compute(rate) {
+      var reg = Math.min(workedHrs, OT_AFTER);
+      var ot = Math.max(0, workedHrs - OT_AFTER);
+      return reg * rate + ot * rate * OT_MULT;
+    }
+
+    calcCard =
+      '<div class="card">' +
+      '<h2>Demo day-rate calculation</h2>' +
+      '<table>' +
+      row("Worked (less meal)", mealMin + " min meal deducted", workedHrs.toFixed(2) + " hrs", false) +
+      row("Regular", "first " + OT_AFTER + " hrs", Math.min(workedHrs, OT_AFTER).toFixed(2) + " hrs", false) +
+      row("Overtime", OT_MULT + "×", Math.max(0, workedHrs - OT_AFTER).toFixed(2) + " hrs", false) +
+      '</table>' +
+      '<div class="rate-row"><label for="rate">Base rate / hr</label>' +
+      '<input id="rate" type="number" min="0" step="1" value="' + DEFAULT_RATE + '" inputmode="decimal"></div>' +
+      '<div class="total"><span class="lbl">Estimated gross</span>' +
+      '<span class="val" id="total">' + money(compute(DEFAULT_RATE)) + '</span></div>' +
+      '</div>';
+
+    content.innerHTML =
+      '<div class="card"><h2>Times received</h2><table>' + rows + '</table></div>' + calcCard;
+
+    var rateInput = document.getElementById("rate");
+    var totalEl = document.getElementById("total");
+    rateInput.addEventListener("input", function () {
+      var r = parseFloat(rateInput.value) || 0;
+      totalEl.textContent = money(compute(r));
+    });
+  } else {
+    content.innerHTML =
+      '<div class="card"><h2>Times received</h2><table>' + rows + '</table></div>' +
+      '<div class="card"><p class="none">Log both <b>NDB</b> and <b>Wrap</b> to see a ' +
+      'sample day-rate calculation.</p></div>';
+  }
+})();
+</script>
+</body>
+</html>

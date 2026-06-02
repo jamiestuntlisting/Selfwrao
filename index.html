@@ -460,12 +460,15 @@
     { key: "wrap",  label: "Wrap",  formal: "Wrap",  sub: "Dismiss on set" }
   ];
 
-  // Where "Send to Rate Calculator" hands off. The StuntListing rate
-  // calculator is not built yet — point this at it when it exists.
-  // The day's times are passed in the URL hash and also stashed in
-  // localStorage under HANDOFF_KEY for a same-origin calculator to read.
-  var RATE_CALC_URL = "/rate-calculator";
+  // Where "Send to Rate Calculator" hands off. Points at the demo rate
+  // calculator page in this repo for now; swap for the real StuntListing
+  // rate calculator when it exists. The day's times are passed in the URL
+  // hash and also stashed in localStorage under HANDOFF_KEY.
+  var RATE_CALC_URL = "rate-calculator.html";
   var HANDOFF_KEY = "stuntlisting.rateCalc.handoff";
+
+  // Meal breaks are 30 min; we log the "in" tap and infer "out" from it.
+  var LUNCH_MINUTES = 30;
 
   // ---- Persistence (per calendar day) ----------------------------------
   var DATE_KEY = isoDate(new Date());        // e.g. 2026-06-01
@@ -687,6 +690,17 @@
         note: e.note || ""
       } : null;
     });
+    // Lunch is logged as the meal "in"; infer the "out" as in + LUNCH_MINUTES.
+    if (state.lunch) {
+      var outTs = state.lunch.ts + LUNCH_MINUTES * 60000;
+      times.lunch.role = "in";
+      times.lunch.outInferred = {
+        iso: new Date(outTs).toISOString(),
+        hhmm: tsToInputValue(outTs),
+        clock: formatTime(outTs),
+        minutesAfterIn: LUNCH_MINUTES
+      };
+    }
     return { source: "stuntlisting-exhibitG-timelogger", version: 1, date: DATE_KEY, times: times };
   }
 
@@ -742,7 +756,6 @@
     var dl = document.createElement("dl");
     dl.className = "tc-meta";
     metaRow(dl, "Production", "");
-    metaRow(dl, "Performer", "");
     metaRow(dl, "Date", new Date(DATE_KEY + "T00:00:00").toLocaleDateString(undefined, {
       weekday: "short", month: "short", day: "numeric", year: "numeric"
     }));
@@ -779,8 +792,22 @@
       tdClock.className = "tc-r";
       var clock = document.createElement("span");
       clock.className = "tc-clock" + (e ? "" : " tc-empty");
-      clock.textContent = e ? formatTime(e.ts) : "— : —";
-      tdClock.appendChild(clock);
+      // Lunch: logged time is the "in"; infer "out" as in + LUNCH_MINUTES.
+      if (s.key === "lunch" && e) {
+        clock.textContent = "In " + formatTime(e.ts);
+        tdClock.appendChild(clock);
+        var out = document.createElement("span");
+        out.className = "tc-clock";
+        out.style.display = "block";
+        out.style.fontWeight = "400";
+        out.style.fontSize = "0.78rem";
+        out.style.color = "#6b6f76";
+        out.textContent = "Out " + formatTime(e.ts + LUNCH_MINUTES * 60000) + " · inferred";
+        tdClock.appendChild(out);
+      } else {
+        clock.textContent = e ? formatTime(e.ts) : "— : —";
+        tdClock.appendChild(clock);
+      }
 
       tr.appendChild(tdKey);
       tr.appendChild(tdClock);
